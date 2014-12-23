@@ -40,22 +40,27 @@
 #endif
 
 #if defined(NSS_IPV4_ONLY) && ! defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname3_r _nss_mdns4_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns4_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns4_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns4_gethostbyaddr_r
 #elif defined(NSS_IPV4_ONLY) && defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname3_r _nss_mdns4_minimal_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns4_minimal_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns4_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns4_minimal_gethostbyaddr_r
 #elif defined(NSS_IPV6_ONLY) && ! defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname3_r _nss_mdns6_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns6_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns6_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns6_gethostbyaddr_r
 #elif defined(NSS_IPV6_ONLY) && defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname3_r _nss_mdns6_minimal_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns6_minimal_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns6_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns6_minimal_gethostbyaddr_r
 #elif defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname3_r _nss_mdns_minimal_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns_minimal_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns_minimal_gethostbyaddr_r
@@ -285,14 +290,16 @@ static char** get_search_domains(void) {
 
 #endif
 
-enum nss_status _nss_mdns_gethostbyname2_r(
+enum nss_status _nss_mdns_gethostbyname3_r(
     const char *name,
     int af,
     struct hostent * result,
     char *buffer,
     size_t buflen,
     int *errnop,
-    int *h_errnop) {
+    int *h_errnop,
+    int32_t *ttlp,
+    char **canonp) {
 
     struct userdata u;
     enum nss_status status = NSS_STATUS_UNAVAIL;
@@ -508,6 +515,9 @@ enum nss_status _nss_mdns_gethostbyname2_r(
     result->h_name = buffer+idx;
     idx += strlen(name)+1;
 
+    if (canonp)
+        *canonp = result->h_name;
+
     ALIGN(idx);
     
     result->h_addrtype = af;
@@ -547,6 +557,27 @@ finish:
     return status;
 }
 
+enum nss_status _nss_mdns_gethostbyname2_r(
+    const char *name,
+    int af,
+    struct hostent * result,
+    char *buffer,
+    size_t buflen,
+    int *errnop,
+    int *h_errnop) {
+
+    return _nss_mdns_gethostbyname3_r(
+        name,
+        af,
+        result,
+        buffer,
+        buflen,
+        errnop,
+        h_errnop,
+        NULL,
+        NULL);
+}
+
 enum nss_status _nss_mdns_gethostbyname_r (
     const char *name,
     struct hostent *result,
@@ -555,14 +586,16 @@ enum nss_status _nss_mdns_gethostbyname_r (
     int *errnop,
     int *h_errnop) {
 
-    return _nss_mdns_gethostbyname2_r(
+    return _nss_mdns_gethostbyname3_r(
         name,
         AF_UNSPEC,
         result,
         buffer,
         buflen,
         errnop,
-        h_errnop);
+        h_errnop,
+        NULL,
+        NULL);
 }
 
 enum nss_status _nss_mdns_gethostbyaddr_r(
