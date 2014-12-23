@@ -37,6 +37,7 @@
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <stdlib.h>
+#include <ifaddrs.h>
 
 #include "dns.h"
 #include "util.h"
@@ -59,6 +60,7 @@ static uint16_t get_random_id(void) {
     return id;
 }
 
+#ifndef NSS_IPV6_ONLY
 static void mdns_mcast_group(struct sockaddr_in *ret_sa) {
     assert(ret_sa);
 
@@ -262,14 +264,214 @@ static int send_dns_packet(int fd, struct dns_packet *p) {
 
     return n_sent;
 }
+#endif
 
-static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_ttl, uint32_t *ret_ifindex, struct timeval *end) {
+#ifndef NSS_IPV4_ONLY
+static void mdns_mcast_group6(struct sockaddr_in6 *ret_sa) {
+    assert(ret_sa);
+
+    memset(ret_sa, 0, sizeof(struct sockaddr_in6));
+    
+    ret_sa->sin6_family = AF_INET6;
+    ret_sa->sin6_port = htons(5353);
+    assert(inet_pton(AF_INET6, "ff02::fb", &ret_sa->sin6_addr) == 1);
+}
+
+int mdns_open_socket6(void) {
+    struct ipv6_mreq mreq;
+    struct sockaddr_in6 sa;
+    int fd = -1, ttl, yes;
+
+    if ((fd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0)
+        goto fail;
+    ttl = 255;
+    if (setsockopt(fd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &ttl, sizeof(ttl)) < 0)
+        goto fail;
+
+    yes = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
+        fprintf(stderr, "SO_REUSEADDR failed: %s\n", strerror(errno));
+        goto fail;
+    }
+
+    sa.sin6_family = AF_INET6;
+    sa.sin6_addr = in6addr_any;
+    sa.sin6_port = 0;
+    
+    if (bind(fd, (struct sockaddr*) &sa, sizeof(sa)) < 0)
+        goto fail;
+
+    mdns_mcast_group6(&sa);
+
+    memset(&mreq, 0, sizeof(mreq));
+    mreq.ipv6mr_multiaddr = sa.sin6_addr;
+
+    if (setsockopt(fd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        fprintf(stderr, "IPV6_ADD_MEMBERSHIP failed: %s\n", strerror(errno));
+        goto fail;
+    }
+    
+#ifdef IPV6_PKTINFO
+    yes = 1;
+    if (setsockopt(fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &yes, sizeof(yes)) < 0)
+        goto fail;
+#else
+    
+#ifdef IPV6_RECVINTERFACE
+    yes = 1;
+    if (setsockopt (fd, IPPROTO_IPV6, IPV6_RECVINTERFACE, &yes, sizeof(yes)) < 0)
+      goto fail;
+#elif defined(IPV6_RECVIF)
+    yes = 1;
+    if (setsockopt (fd, IPPROTO_IPV6, IPV6_RECVIF, &yes, sizeof(yes)) < 0)
+        goto fail;
+#endif
+    
+#ifdef IPV6_RECVDSTADDR
+    yes = 1;
+    if (setsockopt (fd, IPPROTO_IPV6, IPV6_RECVDSTADDR, &yes, sizeof(yes)) < 0)
+        goto fail;
+#endif
+    
+#endif /* IPV6_PKTINFO */
+    
+#ifdef IPV6_RECVHOPLIMIT
+    yes = 1;
+    if (setsockopt(fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &yes, sizeof(yes)) < 0)
+        goto fail;
+#endif
+
+    if (set_cloexec(fd) < 0)
+        goto fail;
+    
+    if (set_nonblock(fd) < 0)
+        goto fail;
+
+    return fd;
+
+fail:
+    if (fd >= 0)
+        close(fd);
+
+    return -1;
+}
+
+static int send_dns_packet6(int fd, struct dns_packet *p) {
+    struct sockaddr_in6 sa;
+    struct msghdr msg;
+    struct iovec io;
+#ifdef IPV6_PKTINFO
+    struct cmsghdr *cmsg;
+    uint8_t cmsg_data[CMSG_SPACE(sizeof(struct in6_pktinfo))];
+    struct in6_pktinfo *pkti;
+#endif
+    struct ifaddrs *ifaddr, *ifa;
+    int n_sent = 0;
+    int last_index = -1;
+
+    assert(fd >= 0 && p);
+    assert(dns_packet_check_valid(p) >= 0);
+
+    mdns_mcast_group6(&sa);
+
+    memset(&io, 0, sizeof(io));
+    io.iov_base = p->data;
+    io.iov_len = p->size;
+
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_name = &sa;
+    msg.msg_namelen = sizeof(sa);
+    msg.msg_iov = &io;
+    msg.msg_iovlen = 1;
+    msg.msg_flags = 0;
+
+#ifdef IPV6_PKTINFO
+    memset(cmsg_data, 0, sizeof(cmsg_data));
+    msg.msg_control = cmsg_data;
+    msg.msg_controllen = sizeof(cmsg_data);
+
+    cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
+    cmsg->cmsg_level = IPPROTO_IPV6;
+    cmsg->cmsg_type = IPV6_PKTINFO;
+
+    pkti = (struct in6_pktinfo*) CMSG_DATA(cmsg);
+
+    msg.msg_controllen = cmsg->cmsg_len;
+#elif defined(__GNUC__)
+#warning "FIXME: We need some code to set the outgoing interface/local address here if IPV6_PKTINFO is not available"
+#endif
+
+    if (getifaddrs(&ifaddr) == -1) {
+        return -1;
+    }
+
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        struct sockaddr_in6 *ifsa6;
+        int ifindex;
+
+        /* Check if this is the loopback device or any other invalid interface */
+        ifsa6 = (struct sockaddr_in6*) ifa->ifa_addr;
+        if (ifsa6 == NULL ||
+            ifsa6->sin6_family != AF_INET6 ||
+            memcmp(&ifsa6->sin6_addr, &in6addr_loopback, sizeof(in6addr_loopback)) == 0 ||
+            memcmp(&ifsa6->sin6_addr, &in6addr_loopback, sizeof(in6addr_any)) == 0)
+            continue;
+
+        /* Check whether this network interface supports multicasts and is up and running */
+        if (!(ifa->ifa_flags & IFF_MULTICAST) ||
+            !(ifa->ifa_flags & IFF_UP) ||
+            !(ifa->ifa_flags & IFF_RUNNING))
+            continue;
+
+        ifindex = if_nametoindex(ifa->ifa_name);
+        if (ifindex == 0)
+            continue;
+
+        /* Only send the the packet once per interface. We assume that
+         * multiple addresses assigned to the same interface follow
+         * immediately one after the other.*/
+        if (last_index == ifindex)
+            continue;
+
+        last_index = ifindex;
+
+#ifdef IP_PKTINFO
+        pkti->ipi6_ifindex = ifindex;
+#endif
+
+        for (;;) {
+            
+            if (sendmsg(fd, &msg, MSG_DONTROUTE) >= 0)
+                break;
+
+            if (errno != EAGAIN) {
+                freeifaddrs(ifaddr);
+                return -1;
+            }
+            
+            if (wait_for_write(fd, NULL) < 0) {
+                freeifaddrs(ifaddr);
+                return -1;
+            }
+        }
+
+        n_sent++;
+    }
+
+    freeifaddrs(ifaddr);
+
+    return n_sent;
+}
+#endif
+
+static int recv_dns_packet(int *fd, int fdcount, struct dns_packet **ret_packet, uint8_t *ret_ttl, uint32_t *ret_ifindex, struct timeval *end) {
     struct dns_packet *p= NULL;
     struct msghdr msg;
     struct iovec io;
     int ret = -1;
     uint8_t aux[64];
-    assert(fd >= 0);
+    assert(fd && fdcount >= 1 && *fd >= 0);
 
     if (!(p = dns_packet_new()))
         return -1; /* OOM */
@@ -289,17 +491,28 @@ static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_
     for (;;) {
         ssize_t l;
         int r;
+        int i;
         
-        if ((l = recvmsg(fd, &msg, 0)) >= 0) {
+        for (i = 0; i < fdcount; i ++)
+        if ((l = recvmsg(fd[i], &msg, 0)) >= 0) {
             struct cmsghdr *cmsg;
             *ret_ttl = 0;
             *ret_ifindex = 0;
             
             for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg,cmsg)) {
+                if (cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_HOPLIMIT)
+		{
+                    *ret_ttl = (uint8_t) (*(uint32_t*) CMSG_DATA(cmsg));
+                }
+                else if (cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO)
+		{
+                    struct in6_pktinfo *pkti = ((struct in6_pktinfo *) CMSG_DATA(cmsg));
+                    *ret_ifindex = pkti->ipi6_ifindex;
+                }
 #ifdef SOL_IP
-                if (cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type == IP_TTL)
+                else if (cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type == IP_TTL)
 #else
-                if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL)
+                else if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL)
 #endif
 		{
                     *ret_ttl = (uint8_t) (*(uint32_t*) CMSG_DATA(cmsg));
@@ -324,7 +537,7 @@ static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_
         if (errno != EAGAIN)
             goto fail;
         
-        if ((r = wait_for_read(fd, end)) < 0)
+        if ((r = wait_for_read(fd, fdcount, end)) < 0)
             goto fail;
         else if (r > 0) { /* timeout */
             ret = 1;
@@ -339,13 +552,13 @@ fail:
     return ret;
 }
 
-static int send_name_query(int fd, const char *name, uint16_t id, int query_ipv4, int query_ipv6) {
-    int ret = -1;
+static int send_name_query(int fd, int fdv6, const char *name, uint16_t id, int query_ipv4, int query_ipv6) {
+    int ret = -1, ret1 = -1, ret2 = -1;
     struct dns_packet *p = NULL;
     uint8_t *prev_name = NULL;
     int qdcount = 0;
 
-    assert(fd >= 0 && name && (query_ipv4 || query_ipv6));
+    assert((fd >= 0 || fdv6 >= 0) && name && (query_ipv4 || query_ipv6));
 
     if (!(p = dns_packet_new()))
         goto finish; /* OOM */
@@ -377,11 +590,28 @@ static int send_name_query(int fd, const char *name, uint16_t id, int query_ipv4
     
     dns_packet_set_field(p, DNS_FIELD_QDCOUNT, qdcount);
     
-    ret = send_dns_packet(fd, p);
+#ifndef NSS_IPV4_ONLY
+    if (fdv6 > 0)
+        ret1 = send_dns_packet6(fdv6, p);
+#endif
+#ifndef NSS_IPV6_ONLY
+    if (fd > 0)
+        ret2 = send_dns_packet(fd, p);
+#endif
     
 finish:
     if (p)
         dns_packet_free(p);
+
+    if (ret1 == -1 && ret2 == -1)
+        ret = -1;
+    else {
+        if (ret1 == -1)
+            ret1 = 0;
+        if (ret2 == -1)
+            ret2 = 0;
+        ret = ret1 + ret2;
+    }
 
     return ret;
 }
@@ -421,12 +651,12 @@ static int skip_questions(struct dns_packet *p) {
     return 0;
 }
 
-static int process_name_response(int fd, const char *name, usec_t timeout, uint16_t id, void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata), void (*ipv6_func)(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata), void *userdata) {
+static int process_name_response(int fd, int fdv6, const char *name, usec_t timeout, uint16_t id, void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata), void (*ipv6_func)(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata), void *userdata) {
     struct dns_packet *p = NULL;
     int done = 0;
     struct timeval end;
     
-    assert(fd >= 0 && name && (ipv4_func || ipv6_func));
+    assert((fd >= 0 || fdv6 >= 0) && name && (ipv4_func || ipv6_func));
 
     gettimeofday(&end, NULL);
     timeval_add(&end, timeout);
@@ -435,8 +665,15 @@ static int process_name_response(int fd, const char *name, usec_t timeout, uint1
         uint8_t ttl;
         uint32_t ifindex;
         int r;
+        int fds[2];
+        int fdcount = 0;
 
-        if ((r = recv_dns_packet(fd, &p, &ttl, &ifindex, &end)) < 0)
+        if (fdv6 >= 0)
+            fds[fdcount++] = fdv6;
+        if (fd >= 0)
+            fds[fdcount++] = fd;
+
+        if ((r = recv_dns_packet(fds, fdcount, &p, &ttl, &ifindex, &end)) < 0)
             return -1;
         else if (r > 0) /* timeout */
             return 1;
@@ -527,21 +764,21 @@ static int process_name_response(int fd, const char *name, usec_t timeout, uint1
     return 0;
 }
 
-int mdns_query_name(int fd, const char *name, void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata), void (*ipv6_func)(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata), void *userdata) {
+int mdns_query_name(int fd, int fdv6, const char *name, void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata), void (*ipv6_func)(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata), void *userdata) {
     const usec_t *timeout = retry_ms;
     uint16_t id;
     
-    assert(fd >= 0 && name && (ipv4_func || ipv6_func));
+    assert((fd >= 0 || fdv6 >= 0) && name && (ipv4_func || ipv6_func));
 
     id = get_random_id();
 
     while (*timeout > 0) {
         int n;
         
-        if (send_name_query(fd, name, id, !!ipv4_func, !!ipv6_func) < 0)
+        if (send_name_query(fd, fdv6, name, id, !!ipv4_func, !!ipv6_func) < 0)
             return -1;
 
-        if ((n = process_name_response(fd, name, *timeout, id, ipv4_func, ipv6_func, userdata)) < 0)
+        if ((n = process_name_response(fd, fdv6, name, *timeout, id, ipv4_func, ipv6_func, userdata)) < 0)
             return -1;
 
         if (n == 0)
@@ -555,7 +792,7 @@ int mdns_query_name(int fd, const char *name, void (*ipv4_func)(const ipv4_addre
     return -1;
 }
 
-static int send_reverse_query(int fd, const char *name, uint16_t id) {
+static int send_reverse_query(int fd, int af, const char *name, uint16_t id) {
     int ret = -1;
     struct dns_packet *p = NULL;
 
@@ -575,7 +812,14 @@ static int send_reverse_query(int fd, const char *name, uint16_t id) {
 
     dns_packet_set_field(p, DNS_FIELD_QDCOUNT, 1);
     
-    ret = send_dns_packet(fd, p);
+#ifndef NSS_IPV4_ONLY
+    if (af == AF_INET6)
+        ret = send_dns_packet6(fd, p);
+#endif
+#ifndef NSS_IPV6_ONLY
+    if (af == AF_INET)
+        ret = send_dns_packet(fd, p);
+#endif
     
 finish:
     if (p)
@@ -599,7 +843,7 @@ static int process_reverse_response(int fd, const char *name, usec_t timeout, ui
         uint32_t ifindex;
         int r;
 
-        if ((r = recv_dns_packet(fd, &p, &ttl, &ifindex, &end)) < 0)
+        if ((r = recv_dns_packet(&fd, 1, &p, &ttl, &ifindex, &end)) < 0)
             return -1;
         else if (r > 0) /* timeout */
             return 1;
@@ -660,7 +904,7 @@ static int process_reverse_response(int fd, const char *name, usec_t timeout, ui
     return 0;
 }
 
-static int query_reverse(int fd, const char *name, void (*name_func)(const char *name, void *userdata), void *userdata) {
+static int query_reverse(int fd, int af, const char *name, void (*name_func)(const char *name, void *userdata), void *userdata) {
     const usec_t *timeout = retry_ms;
     uint16_t id;
     
@@ -671,7 +915,7 @@ static int query_reverse(int fd, const char *name, void (*name_func)(const char 
     while (*timeout > 0) {
         int n;
         
-        if (send_reverse_query(fd, name, id) <= 0) /* error or no interface to send data on */
+        if (send_reverse_query(fd, af, name, id) <= 0) /* error or no interface to send data on */
             return -1;
 
         if ((n = process_reverse_response(fd, name, *timeout, id, name_func, userdata)) < 0)
@@ -697,7 +941,7 @@ int mdns_query_ipv4(int fd, const ipv4_address_t *ipv4, void (*name_func)(const 
     a = ntohl(ipv4->address);
     snprintf(name, sizeof(name), "%u.%u.%u.%u.in-addr.arpa", a & 0xFF, (a >> 8) & 0xFF, (a >> 16) & 0xFF, a >> 24);
 
-    return query_reverse(fd, name, name_func, userdata);
+    return query_reverse(fd, AF_INET, name, name_func, userdata);
 }
 #endif
 
@@ -724,6 +968,6 @@ int mdns_query_ipv6(int fd, const ipv6_address_t *ipv6, void (*name_func)(const 
              ipv6->address[1] & 0xF, ipv6->address[1] >> 4,
              ipv6->address[0] & 0xF, ipv6->address[0] >> 4);
     
-    return query_reverse(fd, name, name_func, userdata);
+    return query_reverse(fd, AF_INET6, name, name_func, userdata);
 }
 #endif

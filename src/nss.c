@@ -355,6 +355,7 @@ enum nss_status _nss_mdns_gethostbyname4_r(
 
 #ifdef ENABLE_LEGACY
     int fd = -1;
+    int fdv6 = -1;
 #endif
 
 /*     DEBUG_TRAP; */
@@ -465,15 +466,25 @@ enum nss_status _nss_mdns_gethostbyname4_r(
 
 #if defined(ENABLE_LEGACY)
     {
+#ifndef NSS_IPV6_ONLY
         if ((fd = mdns_open_socket()) < 0) {
             *errnop = errno;
             *h_errnop = NO_RECOVERY;
             goto finish;
         }
+#endif
+
+#ifndef NSS_IPV4_ONLY
+        if ((fdv6 = mdns_open_socket6()) < 0) {
+            *errnop = errno;
+            *h_errnop = NO_RECOVERY;
+            goto finish;
+        }
+#endif
 
         if (name_allowed) {
             /* Ignore return value */
-            mdns_query_name(fd, name, ipv4_func, ipv6_func, &u);
+            mdns_query_name(fd, fdv6, name, ipv4_func, ipv6_func, &u);
 
             if (!u.count)
                 status = NSS_STATUS_NOTFOUND;
@@ -501,7 +512,7 @@ enum nss_status _nss_mdns_gethostbyname4_r(
                     if (verify_name_allowed(fullname)) {
                         
                         /* Ignore return value */
-                        mdns_query_name(fd, fullname, ipv4_func, ipv6_func, &u);
+                        mdns_query_name(fd, fdv6, fullname, ipv4_func, ipv6_func, &u);
                         
                         if (u.count > 0) {
                             /* We found something, so let's quit */
@@ -576,6 +587,8 @@ finish:
 #ifdef ENABLE_LEGACY
     if (fd >= 0)
         close(fd);
+    if (fdv6 >= 0)
+        close(fdv6);
 #endif
 
     return status;
@@ -607,6 +620,7 @@ enum nss_status _nss_mdns_gethostbyname3_r(
 
 #ifdef ENABLE_LEGACY
     int fd = -1;
+    int fdv6 = -1;
 #endif
 
 /*     DEBUG_TRAP; */
@@ -733,15 +747,25 @@ enum nss_status _nss_mdns_gethostbyname3_r(
 
 #if defined(ENABLE_LEGACY)
     {
+#ifndef NSS_IPV6_ONLY
         if ((fd = mdns_open_socket()) < 0) {
             *errnop = errno;
             *h_errnop = NO_RECOVERY;
             goto finish;
         }
+#endif
+
+#ifndef NSS_IPV4_ONLY
+        if ((fdv6 = mdns_open_socket6()) < 0) {
+            *errnop = errno;
+            *h_errnop = NO_RECOVERY;
+            goto finish;
+        }
+#endif
 
         if (name_allowed) {
             /* Ignore return value */
-            mdns_query_name(fd, name, ipv4_func, ipv6_func, &u);
+            mdns_query_name(fd, fdv6, name, ipv4_func, ipv6_func, &u);
 
             if (!u.count)
                 status = NSS_STATUS_NOTFOUND;
@@ -769,7 +793,7 @@ enum nss_status _nss_mdns_gethostbyname3_r(
                     if (verify_name_allowed(fullname)) {
                         
                         /* Ignore return value */
-                        mdns_query_name(fd, fullname, ipv4_func, ipv6_func, &u);
+                        mdns_query_name(fd, fdv6, fullname, ipv4_func, ipv6_func, &u);
                         
                         if (u.count > 0) {
                             /* We found something, so let's quit */
@@ -843,6 +867,8 @@ finish:
 #ifdef ENABLE_LEGACY
     if (fd >= 0)
         close(fd);
+    if (fdv6 >= 0)
+        close(fdv6);
 #endif
 
     return status;
@@ -909,6 +935,7 @@ enum nss_status _nss_mdns_gethostbyaddr_r(
 #endif
 #ifdef ENABLE_LEGACY
     int fd = -1;
+    int fdv6 = -1;
 #endif
 
     *errnop = EINVAL;
@@ -979,11 +1006,21 @@ enum nss_status _nss_mdns_gethostbyaddr_r(
 #ifdef ENABLE_LEGACY
      /* Lookup using legacy mDNS queries */   
      {
+#ifndef NSS_IPV6_ONLY
         if ((fd = mdns_open_socket()) < 0) {
             *errnop = errno;
             *h_errnop = NO_RECOVERY;
             goto finish;
         }
+#endif
+
+#ifndef NSS_IPV4_ONLY
+        if ((fdv6 = mdns_open_socket6()) < 0) {
+            *errnop = errno;
+            *h_errnop = NO_RECOVERY;
+            goto finish;
+        }
+#endif
 
 	r = -1;
 
@@ -997,7 +1034,7 @@ enum nss_status _nss_mdns_gethostbyaddr_r(
         else
 #endif
 #ifndef NSS_IPV4_ONLY
-            r = mdns_query_ipv6(fd, (const ipv6_address_t*) addr, name_callback, &u);
+            r = mdns_query_ipv6(fdv6, (const ipv6_address_t*) addr, name_callback, &u);
 #endif
         if (r < 0) {
             *errnop = ETIMEDOUT;
@@ -1062,6 +1099,8 @@ finish:
 #ifdef ENABLE_LEGACY
     if (fd >= 0)
         close(fd);
+    if (fdv6 >= 0)
+        close(fdv6);
 #endif
 
     return status;

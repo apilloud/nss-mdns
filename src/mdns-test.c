@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
     if ((fd = mdns_open_socket()) < 0)
         goto finish;
 
-    if (mdns_query_name(fd, argc > 1 ? argv[1] : "cocaine.local", &ipv4_func, &ipv6_func, NULL) < 0) 
+    if (mdns_query_name(fd, -1, argc > 1 ? argv[1] : "cocaine.local", &ipv4_func, &ipv6_func, NULL) < 0) 
         goto finish;
     
     ipv4.address = inet_addr(argc > 1 ? argv[1] : "192.168.50.1");

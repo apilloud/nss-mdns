@@ -154,7 +154,7 @@ int wait_for_write(int fd, struct timeval *end) {
     }
 }
 
-int wait_for_read(int fd, struct timeval *end) {
+int wait_for_read(int *fd, int fdcount, struct timeval *end) {
     struct timeval now;
 
     if (end)
@@ -164,9 +164,14 @@ int wait_for_read(int fd, struct timeval *end) {
         struct timeval tv;
         fd_set fds;
         int r;
+        int i, maxfd = -1;
         
         FD_ZERO(&fds);
-        FD_SET(fd, &fds);
+        for (i = 0; i < fdcount; i ++) {
+            FD_SET(fd[i], &fds);
+            if (fd[i] > maxfd)
+                maxfd = fd[i];
+        }
 
         if (end) {
             if (timeval_cmp(&now, end) >= 0)
@@ -176,15 +181,17 @@ int wait_for_read(int fd, struct timeval *end) {
             timeval_add(&tv, timeval_diff(end, &now));
         }
         
-        if ((r = select(fd+1, &fds, NULL, NULL, end ? &tv : NULL)) < 0) {
+        if ((r = select(maxfd+1, &fds, NULL, NULL, end ? &tv : NULL)) < 0) {
             if (errno != EINTR)
                 return -1;
         } else if (r == 0) 
             return 1;
         else {
             
-            if (FD_ISSET(fd, &fds))
-                return 0;
+            for (i = 0; i < fdcount; i ++) {
+                if (FD_ISSET(fd[i], &fds))
+                    return 0;
+            }
         }
 
         if (end)

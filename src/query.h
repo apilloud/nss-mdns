@@ -32,9 +32,14 @@ typedef struct {
     uint8_t address[16];
 } ipv6_address_t;
 
+#ifndef NSS_IPV6_ONLY
 int mdns_open_socket(void);
+#endif
+#ifndef NSS_IPV4_ONLY
+int mdns_open_socket6(void);
+#endif
 
-int mdns_query_name(int fd,
+int mdns_query_name(int fd, int fdv6,
                const char *name,
                void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata),
                void (*ipv6_func)(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata),
