@@ -33,7 +33,7 @@ static void ipv4_func(const ipv4_address_t *ipv4, void *userdata) {
     fprintf(stderr, "IPV4: %s\n", inet_ntoa(*(const struct in_addr*) &ipv4->address));
 }
 
-static void ipv6_func(const ipv6_address_t *ipv6, void *userdata) {
+static void ipv6_func(const ipv6_address_t *ipv6, uint32_t scopeid, void *userdata) {
 }
 
 static void name_func(const char *name, void *userdata) {

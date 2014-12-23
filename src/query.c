@@ -263,7 +263,7 @@ static int send_dns_packet(int fd, struct dns_packet *p) {
     return n_sent;
 }
 
-static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_ttl, struct timeval *end) {
+static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_ttl, uint32_t *ret_ifindex, struct timeval *end) {
     struct dns_packet *p= NULL;
     struct msghdr msg;
     struct iovec io;
@@ -293,6 +293,7 @@ static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_
         if ((l = recvmsg(fd, &msg, 0)) >= 0) {
             struct cmsghdr *cmsg;
             *ret_ttl = 0;
+            *ret_ifindex = 0;
             
             for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg,cmsg)) {
 #ifdef SOL_IP
@@ -302,13 +303,18 @@ static int recv_dns_packet(int fd, struct dns_packet **ret_packet, uint8_t *ret_
 #endif
 		{
                     *ret_ttl = (uint8_t) (*(uint32_t*) CMSG_DATA(cmsg));
-                    break;
+                }
+#ifdef SOL_IP
+                else if (cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type == IP_PKTINFO)
+#else
+                else if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO)
+#endif
+		{
+                    struct in_pktinfo *pkti = ((struct in_pktinfo *) CMSG_DATA(cmsg));
+                    *ret_ifindex = pkti->ipi_ifindex;
                 }
             }
                      
-            if (!cmsg)
-                goto fail;
-
             p->size = (size_t) l;
 
             *ret_packet = p;
@@ -415,7 +421,7 @@ static int skip_questions(struct dns_packet *p) {
     return 0;
 }
 
-static int process_name_response(int fd, const char *name, usec_t timeout, uint16_t id, void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata), void (*ipv6_func)(const ipv6_address_t *ipv6, void *userdata), void *userdata) {
+static int process_name_response(int fd, const char *name, usec_t timeout, uint16_t id, void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata), void (*ipv6_func)(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata), void *userdata) {
     struct dns_packet *p = NULL;
     int done = 0;
     struct timeval end;
@@ -427,9 +433,10 @@ static int process_name_response(int fd, const char *name, usec_t timeout, uint1
 
     while (!done) {
         uint8_t ttl;
+        uint32_t ifindex;
         int r;
 
-        if ((r = recv_dns_packet(fd, &p, &ttl, &end)) < 0)
+        if ((r = recv_dns_packet(fd, &p, &ttl, &ifindex, &end)) < 0)
             return -1;
         else if (r > 0) /* timeout */
             return 1;
@@ -488,11 +495,16 @@ static int process_name_response(int fd, const char *name, usec_t timeout, uint1
                         rdlength == sizeof(ipv6_address_t)) {
                         
                         ipv6_address_t ipv6;
+                        uint32_t scopeid = 0;
                         
                         if (dns_packet_consume_bytes(p, &ipv6, sizeof(ipv6_address_t)) < 0)
                             break;
+
+                        /* Link Local addresses require scopeid */
+                        if (ipv6.address[0] == 0xFE && ipv6.address[1] == 0x80)
+                            scopeid = ifindex;
                         
-                        ipv6_func(&ipv6, userdata);
+                        ipv6_func(&ipv6, scopeid, userdata);
                         done = 1;
                     }
 #endif
@@ -515,7 +527,7 @@ static int process_name_response(int fd, const char *name, usec_t timeout, uint1
     return 0;
 }
 
-int mdns_query_name(int fd, const char *name, void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata), void (*ipv6_func)(const ipv6_address_t *ipv6, void *userdata), void *userdata) {
+int mdns_query_name(int fd, const char *name, void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata), void (*ipv6_func)(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata), void *userdata) {
     const usec_t *timeout = retry_ms;
     uint16_t id;
     
@@ -584,9 +596,10 @@ static int process_reverse_response(int fd, const char *name, usec_t timeout, ui
 
     while (!done) {
         uint8_t ttl;
+        uint32_t ifindex;
         int r;
 
-        if ((r = recv_dns_packet(fd, &p, &ttl, &end)) < 0)
+        if ((r = recv_dns_packet(fd, &p, &ttl, &ifindex, &end)) < 0)
             return -1;
         else if (r > 0) /* timeout */
             return 1;
