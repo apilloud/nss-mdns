@@ -225,7 +225,8 @@ static int send_dns_packet(int fd, struct dns_packet *p) {
                         * since that call */
 
         /* Check whether this network interface supports multicasts and is up and running */
-        if (!(ifreq[i].ifr_flags & IFF_MULTICAST) ||
+        if (!((ifreq[i].ifr_flags & IFF_MULTICAST) ||
+                (ifreq[i].ifr_flags & IFF_BROADCAST)) ||
             !(ifreq[i].ifr_flags & IFF_UP) ||
             !(ifreq[i].ifr_flags & IFF_RUNNING))
             continue;
@@ -419,7 +420,8 @@ static int send_dns_packet6(int fd, struct dns_packet *p) {
             continue;
 
         /* Check whether this network interface supports multicasts and is up and running */
-        if (!(ifa->ifa_flags & IFF_MULTICAST) ||
+        if (!((ifa->ifa_flags & IFF_MULTICAST) ||
+                (ifa->ifa_flags & IFF_BROADCAST)) ||
             !(ifa->ifa_flags & IFF_UP) ||
             !(ifa->ifa_flags & IFF_RUNNING))
             continue;
