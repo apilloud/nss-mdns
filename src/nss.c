@@ -40,22 +40,32 @@
 #endif
 
 #if defined(NSS_IPV4_ONLY) && ! defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname4_r _nss_mdns4_gethostbyname4_r
+#define _nss_mdns_gethostbyname3_r _nss_mdns4_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns4_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns4_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns4_gethostbyaddr_r
 #elif defined(NSS_IPV4_ONLY) && defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname4_r _nss_mdns4_minimal_gethostbyname4_r
+#define _nss_mdns_gethostbyname3_r _nss_mdns4_minimal_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns4_minimal_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns4_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns4_minimal_gethostbyaddr_r
 #elif defined(NSS_IPV6_ONLY) && ! defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname4_r _nss_mdns6_gethostbyname4_r
+#define _nss_mdns_gethostbyname3_r _nss_mdns6_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns6_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns6_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns6_gethostbyaddr_r
 #elif defined(NSS_IPV6_ONLY) && defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname4_r _nss_mdns6_minimal_gethostbyname4_r
+#define _nss_mdns_gethostbyname3_r _nss_mdns6_minimal_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns6_minimal_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns6_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns6_minimal_gethostbyaddr_r
 #elif defined(MDNS_MINIMAL)
+#define _nss_mdns_gethostbyname4_r _nss_mdns_minimal_gethostbyname4_r
+#define _nss_mdns_gethostbyname3_r _nss_mdns_minimal_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns_minimal_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns_minimal_gethostbyaddr_r
@@ -96,7 +106,7 @@ static void ipv4_callback(const ipv4_address_t *ipv4, void *userdata) {
 #endif
 
 #ifndef NSS_IPV4_ONLY
-static void ipv6_callback(const ipv6_address_t *ipv6, void *userdata) {
+static void ipv6_callback(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata) {
     struct userdata *u = userdata;
     assert(ipv6 && userdata);
 
@@ -119,6 +129,41 @@ static void name_callback(const char*name, void *userdata) {
     u->data_len += strlen(name)+1;
 }
 
+struct userdata4 {
+    int count;
+    int countv4;
+    int countv6;
+    ipv4_address_t ipv4[MAX_ENTRIES];
+    ipv6_address_t ipv6[MAX_ENTRIES];
+    uint32_t scopeid[MAX_ENTRIES];
+};
+
+#ifndef NSS_IPV6_ONLY
+static void ipv4_callback4(const ipv4_address_t *ipv4, void *userdata) {
+    struct userdata4 *u = userdata;
+    assert(ipv4 && userdata);
+
+    if (u->countv4 >= MAX_ENTRIES)
+        return;
+
+    u->ipv4[u->countv4++] = *ipv4;
+    u->count ++;
+}
+#endif
+
+#ifndef NSS_IPV4_ONLY
+static void ipv6_callback4(const ipv6_address_t *ipv6, const uint32_t scopeid,  void *userdata) {
+    struct userdata4 *u = userdata;
+    assert(ipv6 && userdata);
+
+    if (u->countv6 >= MAX_ENTRIES)
+        return;
+
+    u->scopeid[u->countv6] = scopeid;
+    u->ipv6[u->countv6++] = *ipv6;
+    u->count ++;
+}
+#endif
 static int ends_with(const char *name, const char* suffix) {
     size_t ln, ls;
     assert(name);
@@ -285,21 +330,22 @@ static char** get_search_domains(void) {
 
 #endif
 
-enum nss_status _nss_mdns_gethostbyname2_r(
+enum nss_status _nss_mdns_gethostbyname4_r(
     const char *name,
-    int af,
-    struct hostent * result,
+    struct gaih_addrtuple **pat,
     char *buffer,
     size_t buflen,
     int *errnop,
-    int *h_errnop) {
+    int *h_errnop,
+    int32_t *ttlp) {
 
-    struct userdata u;
+    struct userdata4 u;
     enum nss_status status = NSS_STATUS_UNAVAIL;
-    int i;
-    size_t address_length, l, idx, astart;
+    struct gaih_addrtuple *at;
+    int i, j;
+    size_t idx;
     void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata);
-    void (*ipv6_func)(const ipv6_address_t *ipv6, void *userdata);
+    void (*ipv6_func)(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata);
     int name_allowed;
 
 #ifdef ENABLE_AVAHI
@@ -309,6 +355,272 @@ enum nss_status _nss_mdns_gethostbyname2_r(
 
 #ifdef ENABLE_LEGACY
     int fd = -1;
+    int fdv6 = -1;
+#endif
+
+/*     DEBUG_TRAP; */
+
+    if (buflen <
+        sizeof(char*)+    /* alias names */
+        strlen(name)+1)  {   /* official name */
+        
+        *errnop = ERANGE;
+        *h_errnop = NO_RECOVERY;
+        status = NSS_STATUS_TRYAGAIN;
+        
+        goto finish;
+    }
+    
+    u.count = 0;
+    u.countv6 = 0;
+    u.countv4 = 0;
+
+#ifdef NSS_IPV6_ONLY
+    ipv4_func = NULL;
+#else
+    ipv4_func = ipv4_callback4;
+#endif    
+
+#ifdef NSS_IPV4_ONLY
+    ipv6_func = NULL;
+#else
+    ipv6_func = ipv6_callback4;
+#endif
+
+    name_allowed = verify_name_allowed(name);
+    
+#ifdef ENABLE_AVAHI
+#ifdef NSS_IPV4_ONLY
+    int af = AF_INET;
+#else
+#error AVAHI does not properly support IPv6 scopes
+#endif
+
+    if (avahi_works && name_allowed) {
+        int r;
+
+        if ((r = avahi_resolve_name(af, name, data)) < 0)
+            avahi_works = 0;
+        else if (r == 0) {
+            if (af == AF_INET && ipv4_func)
+                ipv4_func((ipv4_address_t*) data, &u);
+            if (af == AF_INET6 && ipv6_func)
+                ipv6_func((ipv6_address_t*)data, 0, &u);
+        } else
+            status = NSS_STATUS_NOTFOUND;
+    }
+
+#ifdef HONOUR_SEARCH_DOMAINS
+    if (u.count == 0 && avahi_works && !ends_with(name, ".")) {
+        char **domains;
+
+        if ((domains = get_search_domains())) {
+            char **p;
+            
+            /* Try to concatenate host names */
+	    for (p = domains; *p; p++) {
+                int fullnamesize;
+                char *fullname;
+                
+	        fullnamesize = strlen(name) + strlen(*p) + 2;
+
+                if (!(fullname = malloc(fullnamesize)))
+                    break;
+                
+		snprintf(fullname, fullnamesize, "%s.%s", name, *p);
+
+                if (verify_name_allowed(fullname)) {
+                    int r;
+
+                    r = avahi_resolve_name(af, fullname, data);
+                    free(fullname);
+                    
+                    if (r < 0) {
+                        /* Lookup failed */
+                        avahi_works = 0;
+                        break;
+                    } else if (r == 0) {
+                        /* Lookup succeeded */
+                        if (af == AF_INET && ipv4_func)
+                            ipv4_func((ipv4_address_t*) data, &u);
+                        if (af == AF_INET6 && ipv6_func)
+                            ipv6_func((ipv6_address_t*)data, 0, &u);
+                        break;
+                    } else
+                        /* Lookup suceeded, but nothing found */
+                        status = NSS_STATUS_NOTFOUND;
+                    
+		} else
+                    free(fullname);
+	    }
+            
+	    free_domains(domains);
+	}
+    }
+#endif /* HONOUR_SEARCH_DOMAINS */
+#endif /* ENABLE_AVAHI */
+
+#if defined(ENABLE_LEGACY) && defined(ENABLE_AVAHI)
+    if (u.count == 0 && !avahi_works) 
+#endif
+
+#if defined(ENABLE_LEGACY)
+    {
+#ifndef NSS_IPV6_ONLY
+        if ((fd = mdns_open_socket()) < 0) {
+            *errnop = errno;
+            *h_errnop = NO_RECOVERY;
+            goto finish;
+        }
+#endif
+
+#ifndef NSS_IPV4_ONLY
+        if ((fdv6 = mdns_open_socket6()) < 0) {
+            *errnop = errno;
+            *h_errnop = NO_RECOVERY;
+            goto finish;
+        }
+#endif
+
+        if (name_allowed) {
+            /* Ignore return value */
+            mdns_query_name(fd, fdv6, name, ipv4_func, ipv6_func, &u);
+
+            if (!u.count)
+                status = NSS_STATUS_NOTFOUND;
+        }
+
+#ifdef HONOUR_SEARCH_DOMAINS
+        if (u.count == 0 && !ends_with(name, ".")) {
+            char **domains;
+            
+            /* Try the search domains if the user did not use a traling '.' */
+            
+            if ((domains = get_search_domains())) {
+                char **p;
+                
+                for (p = domains; *p; p++) {
+                    int fullnamesize = 0;
+                    char *fullname = NULL;
+                    
+                    fullnamesize = strlen(name) + strlen(*p) + 2;
+                    if (!(fullname = malloc(fullnamesize)))
+                        break;
+                    
+                    snprintf(fullname, fullnamesize, "%s.%s", name, *p);
+                    
+                    if (verify_name_allowed(fullname)) {
+                        
+                        /* Ignore return value */
+                        mdns_query_name(fd, fdv6, fullname, ipv4_func, ipv6_func, &u);
+                        
+                        if (u.count > 0) {
+                            /* We found something, so let's quit */
+                            free(fullname);
+                            break;
+                        } else
+                            status = NSS_STATUS_NOTFOUND;
+
+                    }
+                    
+                    free(fullname);
+                }
+                
+                free_domains(domains);
+	    }
+        }
+#endif /* HONOUR_SEARCH_DOMAINS */
+    }
+#endif /* ENABLE_LEGACY */
+
+    if (u.count == 0) {
+        *errnop = ETIMEDOUT;
+        *h_errnop = HOST_NOT_FOUND;
+        goto finish;
+    }
+    
+    /* Official name */
+    strcpy(buffer, name); 
+    idx = strlen(name)+1;
+
+    ALIGN(idx);
+    
+    at = (struct gaih_addrtuple*)(buffer+idx);
+    
+    /* Check if there's enough space for the addresses */
+    if (buflen < idx+sizeof(struct gaih_addrtuple)*(u.count)) {
+        *errnop = ERANGE;
+        *h_errnop = NO_RECOVERY;
+        status = NSS_STATUS_TRYAGAIN;
+        goto finish;
+    }
+
+    /* Address array for IPv6 */
+    for (i = 0; i < u.countv6; i++) {
+        if (i) {
+            at[i-1].next = &at[i];
+        }
+        at[i].next = NULL;
+        at[i].name = buffer;
+        at[i].family = AF_INET6;
+        memcpy(&at[i].addr, &u.ipv6[i], sizeof(ipv6_address_t));
+        at[i].scopeid = u.scopeid[i];
+    }
+
+    /* Address array for IPv4 */
+    j = i;
+    for (i = 0; i < u.countv4; i++) {
+        if (i+j) {
+            at[i+j-1].next = &at[i+j];
+        }
+        at[i+j].next = NULL;
+        at[i+j].name = buffer;
+        at[i+j].family = AF_INET;
+        memcpy(&at[i+j].addr, &u.ipv4[i], sizeof(ipv4_address_t));
+        at[i+j].scopeid = 0;
+    }
+
+    status = NSS_STATUS_SUCCESS;
+    *pat = at;
+    
+finish:
+#ifdef ENABLE_LEGACY
+    if (fd >= 0)
+        close(fd);
+    if (fdv6 >= 0)
+        close(fdv6);
+#endif
+
+    return status;
+}
+
+enum nss_status _nss_mdns_gethostbyname3_r(
+    const char *name,
+    int af,
+    struct hostent * result,
+    char *buffer,
+    size_t buflen,
+    int *errnop,
+    int *h_errnop,
+    int32_t *ttlp,
+    char **canonp) {
+
+    struct userdata u;
+    enum nss_status status = NSS_STATUS_UNAVAIL;
+    int i;
+    size_t address_length, l, idx, astart;
+    void (*ipv4_func)(const ipv4_address_t *ipv4, void *userdata);
+    void (*ipv6_func)(const ipv6_address_t *ipv6, const uint32_t scopeid, void *userdata);
+    int name_allowed;
+
+#ifdef ENABLE_AVAHI
+    int avahi_works = 1;
+    void * data[32];
+#endif
+
+#ifdef ENABLE_LEGACY
+    int fd = -1;
+    int fdv6 = -1;
 #endif
 
 /*     DEBUG_TRAP; */
@@ -374,7 +686,7 @@ enum nss_status _nss_mdns_gethostbyname2_r(
             if (af == AF_INET && ipv4_func)
                 ipv4_func((ipv4_address_t*) data, &u);
             if (af == AF_INET6 && ipv6_func)
-                ipv6_func((ipv6_address_t*)data, &u);
+                ipv6_func((ipv6_address_t*)data, 0, &u);
         } else
             status = NSS_STATUS_NOTFOUND;
     }
@@ -413,7 +725,7 @@ enum nss_status _nss_mdns_gethostbyname2_r(
                         if (af == AF_INET && ipv4_func)
                             ipv4_func((ipv4_address_t*) data, &u);
                         if (af == AF_INET6 && ipv6_func)
-                            ipv6_func((ipv6_address_t*)data, &u);
+                            ipv6_func((ipv6_address_t*)data, 0, &u);
                         break;
                     } else
                         /* Lookup suceeded, but nothing found */
@@ -435,15 +747,25 @@ enum nss_status _nss_mdns_gethostbyname2_r(
 
 #if defined(ENABLE_LEGACY)
     {
+#ifndef NSS_IPV6_ONLY
         if ((fd = mdns_open_socket()) < 0) {
             *errnop = errno;
             *h_errnop = NO_RECOVERY;
             goto finish;
         }
+#endif
+
+#ifndef NSS_IPV4_ONLY
+        if ((fdv6 = mdns_open_socket6()) < 0) {
+            *errnop = errno;
+            *h_errnop = NO_RECOVERY;
+            goto finish;
+        }
+#endif
 
         if (name_allowed) {
             /* Ignore return value */
-            mdns_query_name(fd, name, ipv4_func, ipv6_func, &u);
+            mdns_query_name(fd, fdv6, name, ipv4_func, ipv6_func, &u);
 
             if (!u.count)
                 status = NSS_STATUS_NOTFOUND;
@@ -471,7 +793,7 @@ enum nss_status _nss_mdns_gethostbyname2_r(
                     if (verify_name_allowed(fullname)) {
                         
                         /* Ignore return value */
-                        mdns_query_name(fd, fullname, ipv4_func, ipv6_func, &u);
+                        mdns_query_name(fd, fdv6, fullname, ipv4_func, ipv6_func, &u);
                         
                         if (u.count > 0) {
                             /* We found something, so let's quit */
@@ -508,6 +830,9 @@ enum nss_status _nss_mdns_gethostbyname2_r(
     result->h_name = buffer+idx;
     idx += strlen(name)+1;
 
+    if (canonp)
+        *canonp = result->h_name;
+
     ALIGN(idx);
     
     result->h_addrtype = af;
@@ -542,9 +867,32 @@ finish:
 #ifdef ENABLE_LEGACY
     if (fd >= 0)
         close(fd);
+    if (fdv6 >= 0)
+        close(fdv6);
 #endif
 
     return status;
+}
+
+enum nss_status _nss_mdns_gethostbyname2_r(
+    const char *name,
+    int af,
+    struct hostent * result,
+    char *buffer,
+    size_t buflen,
+    int *errnop,
+    int *h_errnop) {
+
+    return _nss_mdns_gethostbyname3_r(
+        name,
+        af,
+        result,
+        buffer,
+        buflen,
+        errnop,
+        h_errnop,
+        NULL,
+        NULL);
 }
 
 enum nss_status _nss_mdns_gethostbyname_r (
@@ -555,14 +903,16 @@ enum nss_status _nss_mdns_gethostbyname_r (
     int *errnop,
     int *h_errnop) {
 
-    return _nss_mdns_gethostbyname2_r(
+    return _nss_mdns_gethostbyname3_r(
         name,
         AF_UNSPEC,
         result,
         buffer,
         buflen,
         errnop,
-        h_errnop);
+        h_errnop,
+        NULL,
+        NULL);
 }
 
 enum nss_status _nss_mdns_gethostbyaddr_r(
@@ -585,6 +935,7 @@ enum nss_status _nss_mdns_gethostbyaddr_r(
 #endif
 #ifdef ENABLE_LEGACY
     int fd = -1;
+    int fdv6 = -1;
 #endif
 
     *errnop = EINVAL;
@@ -655,11 +1006,21 @@ enum nss_status _nss_mdns_gethostbyaddr_r(
 #ifdef ENABLE_LEGACY
      /* Lookup using legacy mDNS queries */   
      {
+#ifndef NSS_IPV6_ONLY
         if ((fd = mdns_open_socket()) < 0) {
             *errnop = errno;
             *h_errnop = NO_RECOVERY;
             goto finish;
         }
+#endif
+
+#ifndef NSS_IPV4_ONLY
+        if ((fdv6 = mdns_open_socket6()) < 0) {
+            *errnop = errno;
+            *h_errnop = NO_RECOVERY;
+            goto finish;
+        }
+#endif
 
 	r = -1;
 
@@ -673,7 +1034,7 @@ enum nss_status _nss_mdns_gethostbyaddr_r(
         else
 #endif
 #ifndef NSS_IPV4_ONLY
-            r = mdns_query_ipv6(fd, (const ipv6_address_t*) addr, name_callback, &u);
+            r = mdns_query_ipv6(fdv6, (const ipv6_address_t*) addr, name_callback, &u);
 #endif
         if (r < 0) {
             *errnop = ETIMEDOUT;
@@ -738,6 +1099,8 @@ finish:
 #ifdef ENABLE_LEGACY
     if (fd >= 0)
         close(fd);
+    if (fdv6 >= 0)
+        close(fdv6);
 #endif
 
     return status;

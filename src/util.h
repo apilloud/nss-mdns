@@ -37,7 +37,7 @@ void timeval_add(struct timeval *tv, usec_t v);
 int set_nonblock(int fd);
 
 int wait_for_write(int fd, struct timeval *end);
-int wait_for_read(int fd, struct timeval *end);
+int wait_for_read(int *fd, int fdcount, struct timeval *end);
 
 #endif
 

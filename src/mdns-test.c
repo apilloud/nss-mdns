@@ -33,7 +33,7 @@ static void ipv4_func(const ipv4_address_t *ipv4, void *userdata) {
     fprintf(stderr, "IPV4: %s\n", inet_ntoa(*(const struct in_addr*) &ipv4->address));
 }
 
-static void ipv6_func(const ipv6_address_t *ipv6, void *userdata) {
+static void ipv6_func(const ipv6_address_t *ipv6, uint32_t scopeid, void *userdata) {
 }
 
 static void name_func(const char *name, void *userdata) {
@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
     if ((fd = mdns_open_socket()) < 0)
         goto finish;
 
-    if (mdns_query_name(fd, argc > 1 ? argv[1] : "cocaine.local", &ipv4_func, &ipv6_func, NULL) < 0) 
+    if (mdns_query_name(fd, -1, argc > 1 ? argv[1] : "cocaine.local", &ipv4_func, &ipv6_func, NULL) < 0) 
         goto finish;
     
     ipv4.address = inet_addr(argc > 1 ? argv[1] : "192.168.50.1");

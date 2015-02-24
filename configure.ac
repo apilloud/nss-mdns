@@ -128,13 +128,13 @@ AM_CONDITIONAL([USE_LINKS], [test "x$links" = xyes])
 ### Enable avahi support?
 
 AC_ARG_ENABLE(avahi,
-        AC_HELP_STRING([--enable-avahi],[Enable lookups with Avahi (default=yes)]),
+        AC_HELP_STRING([--enable-avahi],[Enable lookups with Avahi (default=no)]),
         [case "${enableval}" in
                 yes) ENABLE_AVAHI=yes ;;
                 no)  ENABLE_AVAHI=no ;;
                 *) AC_MSG_ERROR(bad value ${enableval} for --enable-avahi) ;;
         esac],
-        [ENABLE_AVAHI=yes]) dnl Default value
+        [ENABLE_AVAHI=no]) dnl Default value
 
 AM_CONDITIONAL([ENABLE_AVAHI], [test "x$ENABLE_AVAHI" = "xyes"])
 
@@ -145,13 +145,13 @@ fi
 ### Enable legacy unicast mDNS support?
 
 AC_ARG_ENABLE(legacy,
-        AC_HELP_STRING([--enable-legacy],[Enable legacy unicast mDNS lookups when Avahi isn't available (default=no)]),
+        AC_HELP_STRING([--enable-legacy],[Enable legacy unicast mDNS lookups when Avahi isn't available (default=yes)]),
         [case "${enableval}" in
                 yes) ENABLE_LEGACY=yes ;;
                 no)  ENABLE_LEGACY=no ;;
                 *) AC_MSG_ERROR(bad value ${enableval} for --enable-legacy) ;;
         esac],
-        [ENABLE_LEGACY=no]) dnl Default value
+        [ENABLE_LEGACY=yes]) dnl Default value
 
 if test "x$ENABLE_AVAHI" = "xno" -a "x$ENABLE_LEGACY" = "xno"; then
 	AC_MSG_ERROR(Can't disable legacy unicast mDNS lookups if Avahi support is disabled)
