@@ -68,7 +68,11 @@ static void mdns_mcast_group(struct sockaddr_in *ret_sa) {
     
     ret_sa->sin_family = AF_INET;
     ret_sa->sin_port = htons(5353);
+#ifdef EXTENDED_MDNS
+#error IANA has not assigned an IPv4 address for Extended MDNS!
+#else
     ret_sa->sin_addr.s_addr = inet_addr("224.0.0.251");
+#endif
 }
 
 int mdns_open_socket(void) {
@@ -275,7 +279,11 @@ static void mdns_mcast_group6(struct sockaddr_in6 *ret_sa) {
     
     ret_sa->sin6_family = AF_INET6;
     ret_sa->sin6_port = htons(5353);
+#ifdef EXTENDED_MDNS
+    assert(inet_pton(AF_INET6, "ff05::fb", &ret_sa->sin6_addr) == 1);
+#else
     assert(inet_pton(AF_INET6, "ff02::fb", &ret_sa->sin6_addr) == 1);
+#endif
 }
 
 int mdns_open_socket6(void) {
