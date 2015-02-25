@@ -38,17 +38,21 @@ lib_LTLIBRARIES += \
 	nss_mdns.la \
 	nss_mdns4.la \
 	nss_mdns6.la \
+	nss_xmdns6.la \
 	nss_mdns_minimal.la \
 	nss_mdns4_minimal.la \
-	nss_mdns6_minimal.la
+	nss_mdns6_minimal.la \
+	nss_xmdns6_minimal.la
 else
 lib_LTLIBRARIES += \
 	libnss_mdns.la \
 	libnss_mdns4.la \
 	libnss_mdns6.la \
+	libnss_xmdns6.la \
 	libnss_mdns_minimal.la \
 	libnss_mdns4_minimal.la \
-	libnss_mdns6_minimal.la
+	libnss_mdns6_minimal.la \
+	libnss_xmdns6_minimal.la
 endif
 
 noinst_PROGRAMS = nss-test
@@ -85,9 +89,17 @@ libnss_mdns6_la_SOURCES=$(libnss_mdns_la_SOURCES)
 libnss_mdns6_la_CFLAGS=$(libnss_mdns_la_CFLAGS) -DNSS_IPV6_ONLY=1
 libnss_mdns6_la_LDFLAGS=$(libnss_mdns_la_LDFLAGS)
 
+libnss_xmdns6_la_SOURCES=$(libnss_mdns_la_SOURCES)
+libnss_xmdns6_la_CFLAGS=$(libnss_mdns_la_CFLAGS) -DNSS_IPV6_ONLY=1 -DEXTENDED_MDNS=1
+libnss_xmdns6_la_LDFLAGS=$(libnss_mdns_la_LDFLAGS)
+
 libnss_mdns6_minimal_la_SOURCES=$(libnss_mdns_la_SOURCES)
 libnss_mdns6_minimal_la_CFLAGS=$(libnss_mdns_la_CFLAGS) -DNSS_IPV6_ONLY=1 -DMDNS_MINIMAL
 libnss_mdns6_minimal_la_LDFLAGS=$(libnss_mdns_la_LDFLAGS)
+
+libnss_xmdns6_minimal_la_SOURCES=$(libnss_mdns_la_SOURCES)
+libnss_xmdns6_minimal_la_CFLAGS=$(libnss_mdns_la_CFLAGS) -DNSS_IPV6_ONLY=1 -DMDNS_MINIMAL -DEXTENDED_MDNS
+libnss_xmdns6_minimal_la_LDFLAGS=$(libnss_mdns_la_LDFLAGS)
 
 # FreeBSD
 nss_mdns_la_SOURCES=$(sources) bsdnss.c
@@ -110,9 +122,17 @@ nss_mdns6_la_SOURCES=$(nss_mdns_la_SOURCES)
 nss_mdns6_la_CFLAGS=$(nss_mdns_la_CFLAGS) -DNSS_IPV6_ONLY=1
 nss_mdns6_la_LDFLAGS=$(nss_mdns_la_LDFLAGS)
 
+nss_xmdns6_la_SOURCES=$(nss_mdns_la_SOURCES)
+nss_xmdns6_la_CFLAGS=$(nss_mdns_la_CFLAGS) -DNSS_IPV6_ONLY=1 -DEXTENDED_MDNS=1
+nss_xmdns6_la_LDFLAGS=$(nss_mdns_la_LDFLAGS)
+
 nss_mdns6_minimal_la_SOURCES=$(nss_mdns_la_SOURCES)
 nss_mdns6_minimal_la_CFLAGS=$(nss_mdns_la_CFLAGS) -DNSS_IPV6_ONLY=1 -DMDNS_MINIMAL
 nss_mdns6_minimal_la_LDFLAGS=$(nss_mdns_la_LDFLAGS)
+
+nss_xmdns6_minimal_la_SOURCES=$(nss_mdns_la_SOURCES)
+nss_xmdns6_minimal_la_CFLAGS=$(nss_mdns_la_CFLAGS) -DNSS_IPV6_ONLY=1 -DMDNS_MINIMAL -DEXTENDED_MDNS=1
+nss_xmdns6_minimal_la_LDFLAGS=$(nss_mdns_la_LDFLAGS)
 
 avahi_test_SOURCES = \
 	avahi.c avahi.h \
@@ -135,6 +155,8 @@ install-exec-hook:
 	rm -f $(DESTDIR)$(libdir)/libnss_mdns4_minimal.la 
 	rm -f $(DESTDIR)$(libdir)/libnss_mdns6.la 
 	rm -f $(DESTDIR)$(libdir)/libnss_mdns6_minimal.la 
+	rm -f $(DESTDIR)$(libdir)/libnss_xmdns6.la
+	rm -f $(DESTDIR)$(libdir)/libnss_xmdns6_minimal.la
 
 uninstall-hook:
 	rm -f $(DESTDIR)$(libdir)/libnss_mdns.so.2 
@@ -143,3 +165,5 @@ uninstall-hook:
 	rm -f $(DESTDIR)$(libdir)/libnss_mdns4_minimal.so.2 
 	rm -f $(DESTDIR)$(libdir)/libnss_mdns6.so.2 
 	rm -f $(DESTDIR)$(libdir)/libnss_mdns6_minimal.so.2 
+	rm -f $(DESTDIR)$(libdir)/libnss_xmdns6.so.2
+	rm -f $(DESTDIR)$(libdir)/libnss_xmdns6_minimal.so.2

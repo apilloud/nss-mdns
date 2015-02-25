@@ -163,9 +163,11 @@ new NSS modules in <tt>/lib</tt>:</p>
 <li><tt>libnss_mdns.so.2</tt></li>
 <li><tt>libnss_mdns4.so.2</tt></li>
 <li><tt>libnss_mdns6.so.2</tt></li>
+<li><tt>libnss_xmdns6.so.2</tt></li>
 <li><tt>libnss_mdns_minimal.so.2</tt></li>
 <li><tt>libnss_mdns4_minimal.so.2</tt></li>
 <li><tt>libnss_mdns6_minimal.so.2</tt></li>
+<li><tt>libnss_xmdns6_minimal.so.2</tt></li>
 </ul>
 <p><tt>libnss_mdns.so.2</tt>
 resolves both IPv6 and IPv4 addresses, <tt>libnss_mdns4.so.2</tt> only

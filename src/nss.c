@@ -51,12 +51,24 @@
 #define _nss_mdns_gethostbyname2_r _nss_mdns4_minimal_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns4_minimal_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns4_minimal_gethostbyaddr_r
+#elif defined(NSS_IPV6_ONLY) && ! defined(MDNS_MINIMAL) && defined(EXTENDED_MDNS)
+#define _nss_mdns_gethostbyname4_r _nss_xmdns6_gethostbyname4_r
+#define _nss_mdns_gethostbyname3_r _nss_xmdns6_gethostbyname3_r
+#define _nss_mdns_gethostbyname2_r _nss_xmdns6_gethostbyname2_r
+#define _nss_mdns_gethostbyname_r  _nss_xmdns6_gethostbyname_r
+#define _nss_mdns_gethostbyaddr_r  _nss_xmdns6_gethostbyaddr_r
 #elif defined(NSS_IPV6_ONLY) && ! defined(MDNS_MINIMAL)
 #define _nss_mdns_gethostbyname4_r _nss_mdns6_gethostbyname4_r
 #define _nss_mdns_gethostbyname3_r _nss_mdns6_gethostbyname3_r
 #define _nss_mdns_gethostbyname2_r _nss_mdns6_gethostbyname2_r
 #define _nss_mdns_gethostbyname_r  _nss_mdns6_gethostbyname_r
 #define _nss_mdns_gethostbyaddr_r  _nss_mdns6_gethostbyaddr_r
+#elif defined(NSS_IPV6_ONLY) && defined(MDNS_MINIMAL) && defined(EXTENDED_MDNS)
+#define _nss_mdns_gethostbyname4_r _nss_xmdns6_minimal_gethostbyname4_r
+#define _nss_mdns_gethostbyname3_r _nss_xmdns6_minimal_gethostbyname3_r
+#define _nss_mdns_gethostbyname2_r _nss_xmdns6_minimal_gethostbyname2_r
+#define _nss_mdns_gethostbyname_r  _nss_xmdns6_minimal_gethostbyname_r
+#define _nss_mdns_gethostbyaddr_r  _nss_xmdns6_minimal_gethostbyaddr_r
 #elif defined(NSS_IPV6_ONLY) && defined(MDNS_MINIMAL)
 #define _nss_mdns_gethostbyname4_r _nss_mdns6_minimal_gethostbyname4_r
 #define _nss_mdns_gethostbyname3_r _nss_mdns6_minimal_gethostbyname3_r
@@ -219,7 +231,11 @@ static int verify_name_allowed(const char *name) {
     }
 #endif
 
+#ifdef EXTENDED_MDNS
+    return ends_with(name, ".site") || ends_with(name, ".site.");
+#else
     return ends_with(name, ".local") || ends_with(name, ".local."); 
+#endif
 }
 
 #ifdef HONOUR_SEARCH_DOMAINS

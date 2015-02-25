@@ -1,4 +1,3 @@
-
                                  nss-mdns 0.10
 
    Copyright 2004-2007 Lennart Poettering <mzaffzqaf (at) 0pointer (dot)
@@ -15,15 +14,15 @@
 
 License
 
-   This program is free software; you can redistribute it and/or modify
-   it under the terms of the GNU Lesser General Public License as
-   published by the Free Software Foundation; either version 2 of the
-   License, or (at your option) any later version.
+   This program is free software; you can redistribute it and/or modify it
+   under the terms of the GNU Lesser General Public License as published
+   by the Free Software Foundation; either version 2 of the License, or
+   (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-   Lesser General Public License for more details.
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser
+   General Public License for more details.
 
    You should have received a copy of the GNU Lesser General Public
    License along with this program; if not, write to the Free Software
@@ -47,19 +46,18 @@ News
    minimal mDNS stack included in nss-mdns (dubbed "legacy") is no longer
    built by default. Thus, nss-mdns will not work unless [12]Avahi is
    running! That makes Avahi essentially a hard dependency of nss-mdns.
-   Pass --enable-legacy to reenable the mini mDNS stack again. Please
-   note as well that this release does not honour /etc/resolv.conf domain
+   Pass --enable-legacy to reenable the mini mDNS stack again. Please note
+   as well that this release does not honour /etc/resolv.conf domain
    search lists by default anymore. It created a lot of problems and was
    never recommended anyway. You may reenable this functionality by
    passing --enable-search-domains.
 
    Sat Apr 29 2006:
 
-   [13]Version 0.8 released. Changes include: Build time option to
-   disable "legacy unicast" mDNS requests, i.e. resolve exclusively with
-   Avahi; build a special _minimal flavour of the shared objects to
-   minimize unnecessary name lookup timeouts; fix IPv6 resolving when
-   using Avahi.
+   [13]Version 0.8 released. Changes include: Build time option to disable
+   "legacy unicast" mDNS requests, i.e. resolve exclusively with Avahi;
+   build a special _minimal flavour of the shared objects to minimize
+   unnecessary name lookup timeouts; fix IPv6 resolving when using Avahi.
 
    Please note that starting with nss-mdns 0.8 we encourage you to use a
    different /etc/nsswitch.conf configuration line. See below for more
@@ -68,10 +66,10 @@ News
    Sat Nov 19 2005:
 
    [14]Version 0.7 released. Changes include: Portability patch for ARM
-   from Philipp Zabel; make sure not to print any messages to STDERR;
-   deal with OOM situations properly; if multiple addresses are assigned
-   to the same interface make sure to send a query packet only once;
-   other cleanups
+   from Philipp Zabel; make sure not to print any messages to STDERR; deal
+   with OOM situations properly; if multiple addresses are assigned to the
+   same interface make sure to send a query packet only once; other
+   cleanups
 
    Sun Aug 21 2005:
 
@@ -80,9 +78,9 @@ News
 
    Sat Jun 4 2005:
 
-   [17]Version 0.5 released. Changes include: only lookup hostnames
-   ending in .local; add support for a configuration file
-   (/etc/mdns.allow) to allow lookups for other names.
+   [17]Version 0.5 released. Changes include: only lookup hostnames ending
+   in .local; add support for a configuration file (/etc/mdns.allow) to
+   allow lookups for other names.
 
    Sun May 15 2005:
 
@@ -119,18 +117,18 @@ Overview
    to run a mDNS responder daemon seperately from nss-mdns if you want to
    register the local host name via mDNS. I recommend [23]Avahi.
 
-   nss-mdns is very lightweight (9 KByte stripped binary .so compiled
-   with -DNDEBUG=1 -Os on i386, gcc 4.0), has no dependencies besides the
-   glibc and requires only minimal configuration.
+   nss-mdns is very lightweight (9 KByte stripped binary .so compiled with
+   -DNDEBUG=1 -Os on i386, gcc 4.0), has no dependencies besides the glibc
+   and requires only minimal configuration.
 
    By default nss-mdns tries to contact a running [24]avahi-daemon for
    resolving host names and addresses and making use of its superior
    record cacheing. Optionally nss-mdns can be compiled with a mini mDNS
    stack that can be used to resolve host names without a local Avahi
-   installation. Both Avahi support and this mini mDNS stack are
-   optional, however at least one of them needs to be enabled. If both
-   are enabled a connection to Avahi is tried first, and if that fails
-   the mini mDNS stack is used.
+   installation. Both Avahi support and this mini mDNS stack are optional,
+   however at least one of them needs to be enabled. If both are enabled a
+   connection to Avahi is tried first, and if that fails the mini mDNS
+   stack is used.
 
 Current Status
 
@@ -142,14 +140,16 @@ Current Status
 
 Documentation
 
-   After compiling and installing nss-mdns you'll find six new NSS
-   modules in /lib:
+   After compiling and installing nss-mdns you'll find six new NSS modules
+   in /lib:
      * libnss_mdns.so.2
      * libnss_mdns4.so.2
      * libnss_mdns6.so.2
+     * libnss_xmdns6.so.2
      * libnss_mdns_minimal.so.2
      * libnss_mdns4_minimal.so.2
      * libnss_mdns6_minimal.so.2
+     * libnss_xmdns6_minimal.so.2
 
    libnss_mdns.so.2 resolves both IPv6 and IPv4 addresses,
    libnss_mdns4.so.2 only IPv4 addresses and libnss_mdns6.so.2 only IPv6
@@ -190,8 +190,8 @@ rpc:            db files
 netgroup:       nis
 
    That's it. You should now be able to resolve hosts from the .local
-   domain with all your applications. For a quick check use glibc's
-   getent tool:
+   domain with all your applications. For a quick check use glibc's getent
+   tool:
 $ getent hosts foo.local
 192.168.50.4    foo.local
 
@@ -203,20 +203,20 @@ $ getent hosts foo.local
    If you run a firewall, don't forget to allow UDP traffic to the the
    mDNS multicast address 224.0.0.251 on port 5353.
 
-   Please note: The line above makes nss-mdns authoritative for the
-   .local domain. If you have a unicast DNS domain with the same name you
-   will no longer be able to resolve hosts from it. mDNS and a unicast
-   DNS domain named .local are inherently incompatible. Please contact
-   your local admistrator and ask him to move to a different domain name
-   since .local is to be used exclusively for Zeroconf technology.
-   [26]Further information.
+   Please note: The line above makes nss-mdns authoritative for the .local
+   domain. If you have a unicast DNS domain with the same name you will no
+   longer be able to resolve hosts from it. mDNS and a unicast DNS domain
+   named .local are inherently incompatible. Please contact your local
+   admistrator and ask him to move to a different domain name since .local
+   is to be used exclusively for Zeroconf technology. [26]Further
+   information.
 
    Starting with version 0.5, nss-mdns has a simple configuration file
    /etc/mdns.allow for enabling name lookups via mDNS in other domains
    than .local. The file contains valid domain suffixes, seperated by
    newlines. Empty lines are ignored as are comments starting with #. To
-   enable mDNS lookups of all names, regardless of the domain suffix add
-   a line consisting of * only (similar to nss-mdns mode of operation of
+   enable mDNS lookups of all names, regardless of the domain suffix add a
+   line consisting of * only (similar to nss-mdns mode of operation of
    versions <= 0.4):
 # /etc/mdns.allow
 *
@@ -239,8 +239,8 @@ Requirements
    installation with development headers (2.0 or newer) is required. Not
    suprisingly nss-mdns requires a kernel compiled with IPv4 multicasting
    support enabled. [27]Avahi is recommended for its superior cacheing
-   capabilities and for security reasons. Unless you compile nss-mdns
-   with --enable-legacy Avahi is a hard dependency when nss-mdns is used,
+   capabilities and for security reasons. Unless you compile nss-mdns with
+   --enable-legacy Avahi is a hard dependency when nss-mdns is used,
    however not a build-time requirement.
 
    nss-mdns was developed and tested on Debian GNU/Linux "testing" from
@@ -277,17 +277,17 @@ Download
    [31]repository ([32]viewcvs):
 svn checkout svn://svn.0pointer.de/nss-mdns/trunk nss-mdns
 
-   You may find an up to date Debian package of nss-mdns on the
-   [33]Debian package repository. Many other distributions ship it, too.
+   You may find an up to date Debian package of nss-mdns on the [33]Debian
+   package repository. Many other distributions ship it, too.
 
    If you want to be notified whenever I release a new version of this
    software use the subscription feature of [34]Freshmeat.
-     _________________________________________________________________
+     __________________________________________________________________
 
 
     Lennart Poettering <mzaffzqaf (at) 0pointer (dot) de>, May 2007
 
-   $Id: README.html.in 116 2007-05-12 14:54:24Z lennart $
+   $Id$
 
 References
 
